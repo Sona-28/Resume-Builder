@@ -1,67 +1,145 @@
-from django.shortcuts import render
-from .forms import ContactForm
+from django.shortcuts import render,redirect
+from django.contrib import messages
+from django.http import HttpResponseNotFound
+from faunadb import query as q
+import pytz
+from faunadb.objects import Ref
+from faunadb.client import FaunaClient
+import hashlib
+import datetime
 
-def home(request):
-	return render(request, 'home.html', {})
+client = FaunaClient(secret="fnAEnSeQFXACSR1KkuK1vPDZ7kjKwO9RN2sm6Sls")
 
-def info(request):
-	form=ContactForm()
-	if request.method == 'POST':
-		form=ContactForm(request.POST)
-		if form.is_valid():
-			name=form.cleaned_data['name']
-			email=form.cleaned_data['email']
+indexes = client.query(q.paginate(q.indexes()))
 
-			skills_1=form.cleaned_data['skills_1']
-			skills_2=form.cleaned_data['skills_2']
-			skills_3=form.cleaned_data['skills_3']
-			skills_4=form.cleaned_data['skills_4']
+def login(request):
+    if request.method == "POST":
+        username = request.POST.get("username").strip().lower()
+        password = request.POST.get("password")
 
-			mobile=form.cleaned_data['mobile']
-			address=form.cleaned_data['address']
+        try:
+            user = client.query(q.get(q.match(q.index("users_index"), username)))
+            if hashlib.sha512(password.encode()).hexdigest() == user["data"]["password"]:
+                request.session["user"] = {
+                    "id": user["ref"].id(),
+                    "username": user["data"]["username"]
+                }
+                return redirect("resumesite:index")
+            else:
+                raise Exception()
+        except:
+            messages.add_message(request, messages.INFO,"You have supplied invalid login credentials, please try again!", "danger")
+            return redirect("resumesite:login")
+    return render(request,"login.html")
 
-			experience_1_title=form.cleaned_data['experience_1_title']
-			experience_1_dur=form.cleaned_data['experience_1_dur']
-			experience_1_desc=form.cleaned_data['experience_1_desc']
+def register(request):
+    if request.method == "POST":
+        username = request.POST.get("username").strip().lower()
+        email = request.POST.get("email").strip().lower()
+        password = request.POST.get("password")
 
-			experience_2_title=form.cleaned_data['experience_2_title']
-			experience_2_dur=form.cleaned_data['experience_2_dur']
-			experience_2_desc=form.cleaned_data['experience_2_desc']
+        try:
+            user = client.query(q.get(q.match(q.index("users_index"), username)))
+            messages.add_message(request, messages.INFO, 'User already exists with that username.')
+            return redirect("resumesite:register")
+        except:
+            user = client.query(q.create(q.collection("Users"), {
+                "data": {
+                    "username": username,
+                    "email": email,
+                    "password": hashlib.sha512(password.encode()).hexdigest(),
+                    "date": datetime.datetime.now(pytz.UTC)
+                }
+            }))
+            messages.add_message(request, messages.INFO, 'Registration successful.')
+            return redirect("resumesite:login")
+    return render(request,"register.html")
 
-			education_1=form.cleaned_data['education_1']
-			education_1_dur=form.cleaned_data['education_1_dur']
-			education1_score=form.cleaned_data['education1_score']
 
-			education_2=form.cleaned_data['education_2']
-			education_2_dur=form.cleaned_data['education_2_dur']
-			education2_score=form.cleaned_data['education2_score']
+def index(request):
+    return render(request,"index.html")
 
-			data={'name':name}
-			data['email']=email
-			data['skills_1']=skills_1
-			data['skills_2']=skills_2
-			data['skills_3']=skills_3
-			data['skills_4']=skills_4
+def create_resume(request):
+    if request.method=="POST":
+        username=request.session["user"]["username"]
+        full_name=request.POST.get("name")
+        address=request.POST.get("address")
+        phone=request.POST.get("phone")
+        email=request.POST.get("email")
+        about_you=request.POST.get("about")
+        education=request.POST.get("education")
+        career=request.POST.get("career")
+        job_1__start=request.POST.get("job-1__start")
+        job_1__end=request.POST.get("job-1__end")
+        job_1__details=request.POST.get("job-1__details")
+        job_2__start=request.POST.get("job-2__start")
+        job_2__end=request.POST.get("job-2__end")
+        job_2__details=request.POST.get("job-2__details")
+        job_3__start=request.POST.get("job-3__start")
+        job_3__end=request.POST.get("job-3__end")
+        job_3__details=request.POST.get("job-3__details")
+        references=request.POST.get("references")
+        try:
+            resume = client.query(q.get(q.match(q.index("resume_index"), username)))
+            quiz = client.query(q.update(q.ref(q.collection("resume_info"),resume["ref"].id()), {
+                "data": {
+                    "user":username,
+                    "full_name": full_name,
+                    "address": address,
+                    "phone": phone,
+                    "email":email,
+                    "about_you":about_you,
+                    "education":education,
+                    "career":career,
+                    "job_1__start":job_1__start,
+                    "job_1__end":job_1__end,
+                    "job_1__details":job_1__details,
+                    "job_2__start":job_2__start,
+                    "job_2__end":job_2__end,
+                    "job_2__details":job_2__details,
+                    "job_3__start":job_3__start,
+                    "job_3__end":job_3__end,
+                    "job_3__details":job_3__details,
+                }
+            }))
+            messages.add_message(request, messages.INFO, 'Resume Info Edited Successfully. Download Resume Now')
+            return redirect("resumesite:create-resume")
+        except:
+            quiz = client.query(q.create(q.collection("resume_info"), {
+                "data": {
+                    "user":username,
+                    "full_name": full_name,
+                    "address": address,
+                    "phone": phone,
+                    "email":email,
+                    "about_you":about_you,
+                    "education":education,
+                    "job_1__start":job_1__start,
+                    "job_1__end":job_1__end,
+                    "job_1__details":job_1__details,
+                    "job_2__start":job_2__start,
+                    "job_2__end":job_2__end,
+                    "job_2__details":job_2__details,
+                    "job_3__start":job_3__start,
+                    "job_3__end":job_3__end,
+                    "job_3__details":job_3__details,
+                }
+            }))
+            messages.add_message(request, messages.INFO, 'Resume Info Saved Successfully. Download Resume Now')
+            return redirect("resumesite:resume")
+    else:
+        try:
+            resume_info = client.query(q.get(q.match(q.index("resume_index"), request.session["user"]["username"])))["data"]
+            context={"resume_info":resume_info}
+            return render(request,"create-resume.html",context)
+        except:
+            return render(request,"create-resume.html")
 
-			data['mobile']=mobile
-			data['address']=address
 
-			data['experience_1_title']=experience_1_title
-			data['experience_1_dur']=experience_1_dur
-			data['experience_1_desc']=experience_1_desc
-
-			data['experience_2_title']=experience_2_title
-			data['experience_2_dur']=experience_2_dur
-			data['experience_2_desc']=experience_2_desc
-
-			data['education_1']=education_1
-			data['education_1_dur']=education_1_dur
-			data['education1_score']=education1_score
-
-			data['education_2']=education_2
-			data['education_2_dur']=education_2_dur
-			data['education2_score']=education2_score
-			return render(request,'home.html',data)
-			#to add more go to : forms.py
-			# print(name,email)
-	return render(request,'info.html',{'form':form})
+def resume(request):
+    try:
+        resume_info = client.query(q.get(q.match(q.index("resume_index"), request.session["user"]["username"])))["data"]
+        context={"resume_info":resume_info}
+        return render(request,"resume.html",context)
+    except:
+        return render(request,"resume.html")
