@@ -19,6 +19,3 @@ Then the aspirant needs to fill in the personal details . After submitting the f
 
 
 
-<p align="center">
-  <img src ="C:\Users\asus\Pictures\D_NEW3" width = 500px>
-</p>
